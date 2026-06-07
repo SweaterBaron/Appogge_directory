@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes"/>
+<meta name="theme-color" content="#124f96"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>Appogee on Quincy — Park Navigator</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* ── TOKENS ── */
+:root{
+  --bg:#f2f1ed;--surf:#ffffff;--bdr:#dedad2;
+  --tx:#18170f;--mu:#68655c;--ac:#124f96;
+  --acl:#e2ecf8;--hi:#c04000;--gr:#1a7a4a;
+  --r:10px;--hh:56px;--th:48px;
+  --safe-top:env(safe-area-inset-top,0px);
+  --safe-bot:env(safe-area-inset-bottom,0px);
+}
+
+/* ── RESET ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  height:100%;width:100%;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  -webkit-text-size-adjust:100%;
+  overflow:hidden;background:var(--bg);
+}
+
+/* ── SHELL ── */
+#app{
+  display:flex;flex-direction:column;
+  height:100vh;height:100dvh;
+  padding-top:var(--safe-top);
+  padding-bottom:var(--safe-bot);
+  overflow:hidden;
+}
+
+/* ── HEADER ── */
+#hdr{
+  background:var(--ac);color:#fff;
+  padding:0 14px;height:var(--hh);
+  flex-shrink:0;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+#hdr-text h1{font-size:15px;font-weight:700;letter-spacing:.01em;line-height:1.2}
+#hdr-text p{font-size:11px;opacity:.72;margin-top:1px}
+#btn-reset{
+  background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
+  color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;
+  cursor:pointer;white-space:nowrap;flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;
+}
+#btn-reset:active{background:rgba(255,255,255,.3)}
+
+/* ── TABS ── */
+#tabs{
+  display:flex;background:var(--surf);
+  border-bottom:1px solid var(--bdr);flex-shrink:0;
+}
+.tab{
+  flex:1;height:var(--th);
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  font-size:13px;font-weight:500;color:var(--mu);
+  cursor:pointer;border-bottom:3px solid transparent;
+  transition:color .15s,border-color .15s;
+  -webkit-tap-highlight-color:transparent;user-select:none;
+}
+.tab.active{color:var(--ac);border-bottom-color:var(--ac)}
+.tab svg{width:15px;height:15px;flex-shrink:0}
+
+/* ── SEARCH BAR ── */
+#sw{
+  background:var(--surf);padding:8px 12px;
+  border-bottom:1px solid var(--bdr);flex-shrink:0;
+}
+#srch{
+  width:100%;height:38px;
+  padding:0 10px 0 36px;
+  border:1px solid var(--bdr);border-radius:8px;
+  font-size:15px;color:var(--tx);outline:none;
+  background:var(--bg)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2368655c' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E")
+    no-repeat 11px center;
+  -webkit-appearance:none;
+}
+#srch:focus{border-color:var(--ac);background-color:#fff}
+
+/* ── DESTINATION LIST ── */
+#lw{
+  flex-shrink:0;height:36vh;
+  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  background:var(--bg);
+}
+#lst{list-style:none;padding:6px 10px;display:flex;flex-direction:column;gap:5px}
+
+.di{
+  display:flex;align-items:center;gap:11px;
+  background:var(--surf);border:1px solid var(--bdr);
+  border-radius:var(--r);padding:11px 12px;
+  cursor:pointer;transition:background .1s,border-color .1s;
+  -webkit-tap-highlight-color:transparent;
+  min-height:52px;
+}
+.di:active{background:var(--acl)}
+.di.sel{background:var(--acl);border-color:var(--ac)}
+
+.db{
+  min-width:42px;height:30px;border-radius:6px;
+  background:var(--ac);color:#fff;
+  font-size:11px;font-weight:700;letter-spacing:.02em;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;padding:0 5px;
+}
+.di.sel .db{background:var(--hi)}
+
+.dt{min-width:0;flex:1}
+.dp{
+  font-size:14px;font-weight:500;color:var(--tx);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ds{
+  font-size:12px;color:var(--mu);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.da{color:var(--mu);flex-shrink:0}
+.di.sel .da{color:var(--ac)}
+
+/* ── EMPTY / STATUS ── */
+#stat{
+  padding:16px;font-size:13px;color:var(--mu);
+  text-align:center;display:none;
+}
+#stat.v{display:block}
+
+/* ── MAP ── */
+#mw{flex:1;min-height:160px;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+
+/* ── INFO BAR ── */
+#info{
+  background:var(--surf);border-top:1px solid var(--bdr);
+  padding:8px 14px;flex-shrink:0;min-height:36px;
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--mu);
+}
+.idot{
+  width:9px;height:9px;border-radius:50%;
+  background:var(--hi);flex-shrink:0;display:none;
+}
+#info.hd .idot{display:block}
+.iname{font-weight:600;color:var(--tx)}
+.idist{color:var(--mu);margin-left:4px}
+
+/* ── LOADING OVERLAY ── */
+#ov{
+  position:fixed;inset:0;
+  background:rgba(242,241,237,.95);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:16px;z-index:9999;
+  font-size:14px;color:var(--mu);
+  text-align:center;padding:24px;
+}
+#ov.hidden{display:none}
+.spin{
+  width:32px;height:32px;
+  border:3px solid var(--bdr);
+  border-top-color:var(--ac);
+  border-radius:50%;
+  animation:sp .75s linear infinite;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+#ovmsg{max-width:300px;line-height:1.6;font-size:14px}
+#ovretry{
+  margin-top:4px;padding:9px 20px;
+  background:var(--ac);color:#fff;
+  border:none;border-radius:8px;
+  font-size:14px;font-weight:600;cursor:pointer;
+  display:none;
+}
+
+/* ── LEAFLET OVERRIDES ── */
+.leaflet-popup-content-wrapper{
+  border-radius:12px!important;
+  box-shadow:0 4px 18px rgba(0,0,0,.13)!important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif!important;
+}
+.leaflet-popup-content{
+  margin:12px 14px!important;font-size:13px!important;line-height:1.55!important;
+}
+.pu{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#aaa;margin-bottom:2px}
+.pn{font-size:15px;font-weight:700;color:#111;margin-bottom:5px}
+.ptag{
+  display:inline-block;background:#f0ede8;border-radius:4px;
+  padding:2px 6px;font-size:11px;color:#555;margin:2px 2px 0 0;
+}
+
+/* ── ROUTE LEGEND ── */
+#legend{
+  position:absolute;bottom:12px;left:12px;z-index:800;
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--bdr);border-radius:8px;
+  padding:7px 10px;font-size:11px;color:var(--mu);
+  display:none;gap:8px;align-items:center;
+  box-shadow:0 1px 6px rgba(0,0,0,.1);
+}
+#legend.v{display:flex}
+.leg-line{
+  width:28px;height:4px;border-radius:2px;
+  background:var(--ac);flex-shrink:0;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOADING OVERLAY -->
+  <div id="ov">
+    <div class="spin" id="spinner"></div>
+    <span id="ovmsg">Connecting to OpenStreetMap…</span>
+    <button id="ovretry" onclick="init()">Retry</button>
+  </div>
+
+  <!-- HEADER -->
+  <div id="hdr">
+    <div id="hdr-text">
+      <h1>Appogee on Quincy</h1>
+      <p>34501 E Quincy Ave · Watkins, CO 80137</p>
+    </div>
+    <button id="btn-reset" onclick="resetView()" aria-label="Reset map view">⊙ Park View</button>
+  </div>
+
+  <!-- MODE TABS -->
+  <div id="tabs">
+    <div class="tab active" id="tu" onclick="setMode('unit')" role="tab" aria-selected="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      Building No.
+    </div>
+    <div class="tab" id="tn" onclick="setMode('name')" role="tab" aria-selected="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+      </svg>
+      Business Name
+    </div>
+  </div>
+
+  <!-- SEARCH -->
+  <div id="sw">
+    <input id="srch" type="search" placeholder="Search building numbers…"
+           autocomplete="off" autocorrect="off" autocapitalize="off"
+           spellcheck="false" oninput="renderList()" aria-label="Search"/>
+  </div>
+
+  <!-- DESTINATION LIST -->
+  <div id="lw" role="listbox" aria-label="Destinations">
+    <p id="stat"></p>
+    <ul id="lst"></ul>
+  </div>
+
+  <!-- MAP -->
+  <div id="mw">
+    <div id="map"></div>
+    <div id="legend">
+      <div class="leg-line"></div>
+      <span>Route from Gate&nbsp;#1</span>
+    </div>
+  </div>
+
+  <!-- INFO BAR -->
+  <div id="info">
+    <div class="idot"></div>
+    <span id="itxt">Select a destination above to get directions</span>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+/* =============================================================
+   APPOGEE ON QUINCY — PARK ROUTE NAVIGATOR
+   Data source: OpenStreetMap via Overpass API (live, every load)
+   Routing:     OSRM public API → BFS graph fallback
+   Geocoding:   Nominatim (address → bbox seed)
+
+   All road, building, and boundary data is fetched fresh from
+   OpenStreetMap on every page load — no hardcoded map features.
+   ============================================================= */
+
+/* ── CONFIG ── */
+const ADDRESS    = "34501 E Quincy Ave, Watkins, CO 80137";
+const NOMINATIM  = "https://nominatim.openstreetmap.org/search";
+const OVERPASS   = "https://overpass-api.de/api/interpreter";
+const OSRM_BASE  = "https://router.project-osrm.org/route/v1/driving";
+/* Known park centre as geocoding fallback (Watkins Rd × E Quincy Ave) */
+const FALLBACK_LL = [39.6981, -104.5748];
+/* Query box: 0.012° ≈ 1.1 km — large enough to cover the 100-acre site */
+const BOX_DEG    = 0.012;
+
+/* ── STATE ── */
+let map;
+let mode        = "unit";
+let selectedId  = null;
+let allFeatures = [];
+let roadGraph   = null;
+let entryLL     = null;   /* Gate #1 / primary entrance coords */
+let parkBounds  = null;   /* L.LatLngBounds of the site boundary */
+let routeLayer  = null;
+let markerLayer = null;
+let roadLayer   = null;
+let boundaryLayer = null;
+let allRawNodes = [];
+
+/* ── INIT ── */
+async function init() {
+  setOv("Locating park via OpenStreetMap Nominatim…");
+  document.getElementById("ovretry").style.display = "none";
+  document.getElementById("spinner").style.display = "";
+
+  /* Step 1 — geocode address to seed bbox centre */
+  let centre = FALLBACK_LL;
+  try {
+    const r = await fetch(
+      `${NOMINATIM}?q=${encodeURIComponent(ADDRESS)}&format=json&limit=1&addressdetails=0`,
+      { headers:{ "Accept-Language":"en-US,en" } }
+    );
+    if (r.ok) {
+      const j = await r.json();
+      if (j.length) centre = [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+    }
+  } catch(e) { console.warn("Nominatim:", e.message); }
+
+  /* Step 2 — initialise map */
+  if (!map) initMap(centre);
+  else map.setView(centre, 16);
+
+  /* Step 3 — fetch all OSM data for the park bbox */
+  setOv("Fetching live road & building data from OpenStreetMap…");
+  const S = centre[0] - BOX_DEG, N = centre[0] + BOX_DEG;
+  const W = centre[1] - BOX_DEG, E = centre[1] + BOX_DEG;
+
+  try {
+    await fetchOSM(S, W, N, E);
+  } catch(e) {
+    console.error("OSM fetch failed:", e);
+    setOv(`OpenStreetMap data could not be loaded.\n(${e.message})`, true);
+    return;
+  }
+
+  /* Step 4 — resolve Gate #1 / primary entrance */
+  resolveEntrance(centre);
+
+  /* Step 5 — draw entrance marker and fit to park */
+  drawEntranceMarker();
+  fitToPark();
+
+  hideOv();
+  renderList();
+}
+
+/* ── MAP INIT ── */
+function initMap(centre) {
+  map = L.map("map", {
+    center: centre, zoom: 16,
+    zoomControl: true,
+    attributionControl: true,
+  });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors',
+    maxZoom: 21,
+    maxNativeZoom: 19,
+  }).addTo(map);
+}
+
+/* ── OVERPASS FETCH ── */
+async function fetchOSM(S, W, N, E) {
+  const bbox = `${S},${W},${N},${E}`;
+  const query = `
+[out:json][timeout:40];
+(
+  way["highway"](${bbox});
+  node["entrance"](${bbox});
+  node["entrance:primary"](${bbox});
+  node["name"="Gate #1"](${bbox});
+  way["addr:unit"](${bbox});
+  node["addr:unit"](${bbox});
+  way["building"](${bbox});
+  node["building"](${bbox});
+  way["name"]["building"](${bbox});
+  node["name"]["building"](${bbox});
+  way["name"]["industrial"](${bbox});
+  node["name"]["industrial"](${bbox});
+  way["name"]["office"](${bbox});
+  node["name"]["office"](${bbox});
+  way["name"]["shop"](${bbox});
+  node["name"]["shop"](${bbox});
+  way["name"]["amenity"](${bbox});
+  node["name"]["amenity"](${bbox});
+  way["landuse"="industrial"](${bbox});
+  relation["landuse"="industrial"](${bbox});
+  way["name"="Appogee on Quincy"](${bbox});
+  relation["name"="Appogee on Quincy"](${bbox});
+);
+out body;>;out skel qt;`.trim();
+
+  const res = await fetch(OVERPASS, {
+    method: "POST",
+    body: "data=" + encodeURIComponent(query),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  if (!res.ok) throw new Error("Overpass HTTP " + res.status);
+  const data = await res.json();
+  processOSM(data);
+}
+
+/* ── PROCESS OSM DATA ── */
+function processOSM(data) {
+  /* Build node-id → [lat,lon] lookup */
+  const nodeMap = {};
+  allRawNodes = [];
+  data.elements.forEach(el => {
+    if (el.type === "node") {
+      nodeMap[el.id] = [el.lat, el.lon];
+      allRawNodes.push(el);
+    }
+  });
+
+  const roads       = [];
+  const features    = [];
+  const graphNodes  = {};
+  const graphEdges  = [];
+  const bndCoords   = [];   /* boundary polygon point cloud */
+
+  data.elements.forEach(el => {
+    const tags = el.tags || {};
+
+    /* ── ROADS ── */
+    if (tags.highway && el.type === "way" && el.nodes) {
+      const coords = el.nodes.map(n => nodeMap[n]).filter(Boolean);
+      if (coords.length > 1) {
+        roads.push({ coords, hw: tags.highway, name: tags.name || "" });
+        el.nodes.forEach(nid => {
+          if (nodeMap[nid]) graphNodes[nid] = nodeMap[nid];
+        });
+        for (let i = 0; i < el.nodes.length - 1; i++) {
+          const a = el.nodes[i], b = el.nodes[i+1];
+          if (nodeMap[a] && nodeMap[b]) {
+            graphEdges.push([a, b]);
+            graphEdges.push([b, a]);
+          }
+        }
+      }
+      return;
+    }
+
+    /* ── PARK BOUNDARY ── */
+    const isBoundary =
+      el.type === "way" && el.nodes && (
+        tags.landuse === "industrial" ||
+        tags.name    === "Appogee on Quincy" ||
+        tags.boundary === "industrial"
+      );
+    if (isBoundary) {
+      const pts = el.nodes.map(n => nodeMap[n]).filter(Boolean);
+      pts.forEach(p => bndCoords.push(p));
+      return;
+    }
+
+    /* ── NAMED / ADDRESSED FEATURES ── */
+    const hasUnit = tags["addr:unit"];
+    const hasName = tags.name;
+    if (!hasUnit && !hasName)  return;
+    if (tags.highway)          return;
+    if (tags.landuse)          return;
+
+    let ll = null;
+    if (el.type === "node" && el.lat !== undefined) {
+      ll = [el.lat, el.lon];
+    } else if (el.type === "way" && el.nodes) {
+      const pts = el.nodes.map(n => nodeMap[n]).filter(Boolean);
+      if (!pts.length) return;
+      ll = [
+        pts.reduce((s,p) => s+p[0], 0) / pts.length,
+        pts.reduce((s,p) => s+p[1], 0) / pts.length,
+      ];
+    }
+    if (!ll) return;
+    features.push({ id: el.id, unit: hasUnit||"", name: hasName||"", tags, ll });
+  });
+
+  /* ── DRAW ROADS (replace previous layer) ── */
+  if (roadLayer) { map.removeLayer(roadLayer); roadLayer = null; }
+  roadLayer = L.layerGroup();
+  roads.forEach(r => {
+    const isService = r.hw === "service" || r.hw === "track";
+    L.polyline(r.coords, {
+      color:   isService ? "#b0ada6" : "#807d76",
+      weight:  isService ? 2 : 3.5,
+      opacity: 0.85,
+    }).addTo(roadLayer);
+  });
+  roadLayer.addTo(map);
+
+  /* ── DRAW BOUNDARY (replace previous layer) ── */
+  if (boundaryLayer) { map.removeLayer(boundaryLayer); boundaryLayer = null; }
+  if (bndCoords.length > 3) {
+    parkBounds = L.latLngBounds(bndCoords);
+    boundaryLayer = L.polygon(bndCoords, {
+      color: "#124f96", weight: 2, opacity: 0.5,
+      fillColor: "#124f96", fillOpacity: 0.04,
+      dashArray: "6 5",
+    });
+    boundaryLayer.addTo(map);
+  } else {
+    parkBounds = null;
+  }
+
+  /* ── STORE DATA ── */
+  allFeatures = features;
+  roadGraph   = { nodes: graphNodes, edges: graphEdges };
+  drawMarkers(null);
+}
+
+/* ── RESOLVE ENTRANCE ── */
+function resolveEntrance(geocodedCentre) {
+  /* Priority: entrance=primary node → entrance:primary node →
+     name="Gate #1" node → addr:unit=0 feature → geocoded centre */
+  const gateNode = allRawNodes.find(n =>
+    n.tags && (
+      n.tags["entrance"] === "primary" ||
+      n.tags["entrance:primary"] !== undefined ||
+      n.tags["name"] === "Gate #1"
+    )
+  );
+  if (gateNode) {
+    entryLL = [gateNode.lat, gateNode.lon];
+    return;
+  }
+  const b0 = allFeatures.find(f => f.unit === "0");
+  if (b0) { entryLL = b0.ll; return; }
+  entryLL = geocodedCentre;
+}
+
+/* ── ENTRANCE MARKER ── */
+function drawEntranceMarker() {
+  if (!entryLL) return;
+  const icon = L.divIcon({
+    className: "",
+    html: `<div style="
+      background:#124f96;color:#fff;font-size:9px;font-weight:800;
+      border-radius:50%;width:38px;height:38px;
+      display:flex;align-items:center;justify-content:center;
+      text-align:center;line-height:1.15;
+      border:2.5px solid #fff;
+      box-shadow:0 2px 10px rgba(0,0,0,.35);">Gate<br>#1</div>`,
+    iconSize: [38,38], iconAnchor: [19,19],
+  });
+  L.marker(entryLL, { icon, zIndexOffset: 1000 })
+    .addTo(map)
+    .bindPopup(`
+      <div class="pu">PRIMARY ENTRANCE</div>
+      <div class="pn">Gate #1</div>
+      <div class="ptag">Route origin</div>
+      <div class="ptag">34501 E Quincy Ave</div>
+    `);
+}
+
+/* ── FIT TO PARK ── */
+function fitToPark() {
+  if (parkBounds && parkBounds.isValid()) {
+    map.fitBounds(parkBounds, { padding: [16, 16] });
+  } else {
+    /* Fall back to scatter of all features + entryLL */
+    const pts = [
+      ...allFeatures.map(f => f.ll),
+      ...(entryLL ? [entryLL] : []),
+    ];
+    if (pts.length > 1) {
+      try { map.fitBounds(L.latLngBounds(pts), { padding: [20, 20] }); }
+      catch(e) {}
+    }
+  }
+}
+
+function resetView() {
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  document.getElementById("legend").classList.remove("v");
+  selectedId = null;
+  document.querySelectorAll(".di").forEach(el => el.classList.remove("sel"));
+  document.getElementById("info").classList.remove("hd");
+  document.getElementById("itxt").textContent = "Select a destination above to get directions";
+  drawMarkers(null);
+  fitToPark();
+}
+
+/* ── ROUTING ── */
+async function getRoute(fromLL, toLL) {
+  /* Try OSRM public routing API first */
+  try {
+    const url = `${OSRM_BASE}/${fromLL[1]},${fromLL[0]};${toLL[1]},${toLL[0]}` +
+                `?overview=full&geometries=geojson&steps=false`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("OSRM " + r.status);
+    const j = await r.json();
+    if (j.code === "Ok" && j.routes?.length) {
+      return j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+    }
+    throw new Error("No OSRM route returned");
+  } catch(e) {
+    console.warn("OSRM failed, using BFS road graph:", e.message);
+    return bfsRoute(fromLL, toLL);
+  }
+}
+
+/* BFS shortest path along the Overpass road graph */
+function bfsRoute(fromLL, toLL) {
+  const { nodes, edges } = roadGraph;
+  const ids = Object.keys(nodes);
+  if (!ids.length) return [fromLL, toLL];
+
+  /* Build adjacency list */
+  const adj = {};
+  edges.forEach(([a, b]) => { (adj[a] = adj[a]||[]).push(b); });
+
+  const nearest = ll => ids.reduce((best, id) => {
+    const d = sq(nodes[id], ll);
+    return d < best.d ? { id, d } : best;
+  }, { id: ids[0], d: Infinity }).id;
+
+  const startId = nearest(fromLL);
+  const endId   = nearest(toLL);
+  if (startId === endId) return [fromLL, toLL];
+
+  /* BFS */
+  const prev = {}, visited = { [startId]: true };
+  const queue = [startId];
+  let found = false;
+  while (queue.length && !found) {
+    const cur = queue.shift();
+    for (const nb of (adj[cur] || [])) {
+      if (!visited[nb]) {
+        visited[nb] = true;
+        prev[nb] = cur;
+        if (nb == endId) { found = true; break; }
+        queue.push(nb);
+      }
+    }
+  }
+  if (!found) return [fromLL, toLL];
+
+  /* Reconstruct */
+  const path = [];
+  let c = endId;
+  while (c !== undefined) { path.unshift(nodes[c]); c = prev[c]; }
+  return [fromLL, ...path, toLL];
+}
+
+function sq(a, b) {
+  const dl = a[0]-b[0], dn = a[1]-b[1];
+  return dl*dl + dn*dn;
+}
+
+/* ── MARKERS ── */
+function drawMarkers(selId) {
+  if (markerLayer) { map.removeLayer(markerLayer); markerLayer = null; }
+  markerLayer = L.layerGroup();
+
+  allFeatures.forEach(f => {
+    /* Gate #1 / entrance has its own dedicated marker */
+    if (
+      f.tags["entrance"] === "primary" ||
+      f.tags["entrance:primary"] !== undefined ||
+      f.tags["name"] === "Gate #1" ||
+      f.unit === "0"
+    ) return;
+
+    const isSel = f.id === selId;
+    const lbl   = f.unit || (f.name.length > 6 ? f.name.slice(0,5)+"…" : f.name);
+    const bg    = isSel ? "#c04000" : "#124f96";
+    const sz    = isSel ? 36 : 30;
+    const fs    = isSel ? 11 : 10;
+
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="background:${bg};color:#fff;font-size:${fs}px;font-weight:700;
+        border-radius:${isSel?7:5}px;padding:0 6px;height:${sz}px;min-width:${sz}px;
+        display:flex;align-items:center;justify-content:center;
+        border:2px solid #fff;
+        box-shadow:0 2px ${isSel?10:5}px rgba(0,0,0,${isSel?.32:.2});
+        white-space:nowrap;
+        transform:${isSel?"scale(1.08)":"none"}">${esc(lbl)}</div>`,
+      iconAnchor: [sz/2, sz/2],
+    });
+
+    const m = L.marker(f.ll, { icon }).addTo(markerLayer);
+    m.bindPopup(buildPopup(f));
+    m._fid = f.id;
+    if (isSel) setTimeout(() => m.openPopup(), 800);
+  });
+
+  markerLayer.addTo(map);
+}
+
+function buildPopup(f) {
+  const SKIP = new Set(["name","addr:unit","building","highway",
+    "landuse","source","created_by","source:date"]);
+  const LABELS = {
+    "addr:street":"Street","addr:housenumber":"No.",
+    "addr:city":"City","addr:postcode":"ZIP",
+    "phone":"Phone","website":"Website",
+    "opening_hours":"Hours","operator":"Operator","brand":"Brand",
+  };
+  const tags = Object.entries(f.tags)
+    .filter(([k]) => !SKIP.has(k))
+    .map(([k,v]) => `<span class="ptag">${esc(LABELS[k]||k)}: ${esc(v)}</span>`)
+    .join("");
+  return `
+    <div class="pu">${f.unit ? "Building " + esc(f.unit) : ""}</div>
+    <div class="pn">${esc(f.name || ("Building " + f.unit))}</div>
+    ${tags ? `<div style="margin-top:4px">${tags}</div>` : ""}
+  `;
+}
+
+/* ── LIST ── */
+function renderList() {
+  const q  = document.getElementById("srch").value.trim().toLowerCase();
+  const ul = document.getElementById("lst");
+  const st = document.getElementById("stat");
+  ul.innerHTML = "";
+
+  let items = allFeatures.filter(f =>
+    mode === "unit" ? f.unit !== "" : f.name !== ""
+  );
+
+  /* Exclude Gate #1 from selectable list */
+  items = items.filter(f =>
+    f.tags["entrance"] !== "primary" &&
+    f.tags["entrance:primary"] === undefined &&
+    f.tags["name"] !== "Gate #1"
+  );
+
+  if (q) {
+    items = items.filter(f =>
+      f.unit.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)
+    );
+  }
+
+  items.sort((a, b) =>
+    mode === "unit"
+      ? a.unit.localeCompare(b.unit, undefined, { numeric: true })
+      : a.name.localeCompare(b.name)
+  );
+
+  if (!items.length) {
+    st.textContent = allFeatures.length === 0
+      ? "Loading data from OpenStreetMap…"
+      : "No results match your search.";
+    st.className = "v";
+    return;
+  }
+  st.className = "";
+
+  items.forEach(f => {
+    const li  = document.createElement("li");
+    li.className = "di" + (f.id === selectedId ? " sel" : "");
+    li.dataset.id = f.id;
+    li.setAttribute("role", "option");
+    li.setAttribute("aria-selected", f.id === selectedId ? "true" : "false");
+
+    const pri = mode === "unit" ? "Building " + f.unit : f.name;
+    const sec = mode === "unit" ? f.name : (f.unit ? "Building " + f.unit : "");
+
+    li.innerHTML = `
+      <div class="db">${esc(f.unit || "●")}</div>
+      <div class="dt">
+        <div class="dp">${esc(pri)}</div>
+        ${sec ? `<div class="ds">${esc(sec)}</div>` : ""}
+      </div>
+      <svg class="da" width="14" height="14" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M9 18l6-6-6-6"/>
+      </svg>`;
+    li.addEventListener("click", () => selectDest(f.id));
+    ul.appendChild(li);
+  });
+}
+
+/* ── SELECT DESTINATION ── */
+async function selectDest(id) {
+  selectedId = id;
+  const f = allFeatures.find(x => x.id === id);
+  if (!f) return;
+
+  drawMarkers(id);
+
+  /* Clear previous route */
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+
+  /* Info bar — "calculating…" */
+  const infoEl = document.getElementById("info");
+  infoEl.classList.add("hd");
+  document.getElementById("itxt").innerHTML =
+    `<span class="iname">Calculating route to ${esc(f.name || "Building " + f.unit)}…</span>`;
+
+  /* Fetch road-following route from Gate #1 */
+  const coords = await getRoute(entryLL, f.ll);
+
+  /* Draw route */
+  routeLayer = L.layerGroup();
+  /* Outer white halo for contrast on satellite/dark tiles */
+  L.polyline(coords, { color:"#fff", weight:8, opacity:0.55 }).addTo(routeLayer);
+  /* Main route line */
+  L.polyline(coords, { color:"#124f96", weight:4.5, opacity:0.95 }).addTo(routeLayer);
+  /* Destination marker */
+  L.circleMarker(f.ll, {
+    radius: 8, color:"#fff", weight:2.5,
+    fillColor:"#c04000", fillOpacity:1,
+  }).addTo(routeLayer);
+  routeLayer.addTo(map);
+
+  /* Show legend */
+  document.getElementById("legend").classList.add("v");
+
+  /* Fit to park bounds (keeps full campus visible) */
+  fitToPark();
+
+  /* Update info bar */
+  const parts = [f.unit ? "Bldg " + f.unit : "", f.name].filter(Boolean);
+  document.getElementById("itxt").innerHTML =
+    `<span class="iname">${esc(parts.join(" · "))}</span>`;
+
+  /* Highlight list row */
+  document.querySelectorAll(".di").forEach(el =>
+    el.classList.toggle("sel", el.dataset.id == id)
+  );
+}
+
+/* ── MODE SWITCH ── */
+function setMode(m) {
+  mode = m;
+  document.getElementById("tu").classList.toggle("active", m === "unit");
+  document.getElementById("tn").classList.toggle("active", m === "name");
+  document.getElementById("tu").setAttribute("aria-selected", m === "unit");
+  document.getElementById("tn").setAttribute("aria-selected", m === "name");
+  document.getElementById("srch").placeholder =
+    m === "unit" ? "Search building numbers…" : "Search business names…";
+  document.getElementById("srch").value = "";
+  renderList();
+}
+
+/* ── OVERLAY HELPERS ── */
+function setOv(msg, error = false) {
+  document.getElementById("ovmsg").textContent = msg;
+  document.getElementById("ov").classList.remove("hidden");
+  if (error) {
+    document.getElementById("spinner").style.display = "none";
+    document.getElementById("ovretry").style.display = "inline-block";
+  }
+}
+function hideOv() {
+  document.getElementById("ov").classList.add("hidden");
+}
+
+/* ── HTML ESCAPE ── */
+function esc(s) {
+  return String(s || "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+/* ── START ── */
+init();
+</script>
+</body>
+</html>
