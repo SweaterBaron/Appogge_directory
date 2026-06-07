@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Appogee on Quincy — Park Navigator</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:#f4f3ef; --surf:#fff; --bdr:#e0ddd6;
+  --tx:#1a1917; --mu:#696760; --ac:#124f96;
+  --acl:#e3edf8; --hi:#bf3f00; --r:10px;
+  --hh:54px; --th:46px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;background:var(--bg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  -webkit-text-size-adjust:100%;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+
+#hdr{background:var(--ac);color:#fff;padding:0 14px;height:var(--hh);
+  flex-shrink:0;display:flex;flex-direction:column;justify-content:center;gap:2px}
+#hdr h1{font-size:15px;font-weight:600;letter-spacing:.01em}
+#hdr p{font-size:11px;opacity:.72}
+
+#tabs{display:flex;background:var(--surf);border-bottom:1px solid var(--bdr);flex-shrink:0}
+.tab{flex:1;height:var(--th);display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:13px;font-weight:500;color:var(--mu);cursor:pointer;
+  border-bottom:3px solid transparent;-webkit-tap-highlight-color:transparent;user-select:none}
+.tab.active{color:var(--ac);border-bottom-color:var(--ac)}
+.tab svg{width:15px;height:15px;flex-shrink:0}
+
+#sw{background:var(--surf);padding:8px 12px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+#srch{width:100%;height:36px;padding:0 10px 0 34px;border:1px solid var(--bdr);
+  border-radius:8px;font-size:14px;color:var(--tx);outline:none;
+  background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23696760' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;
+  -webkit-appearance:none}
+#srch:focus{border-color:var(--ac)}
+
+#lw{flex-shrink:0;height:38vh;overflow-y:auto;background:var(--bg);-webkit-overflow-scrolling:touch}
+#lst{list-style:none;padding:6px 8px;display:flex;flex-direction:column;gap:4px}
+.di{display:flex;align-items:center;gap:10px;background:var(--surf);
+  border:1px solid var(--bdr);border-radius:var(--r);padding:10px 12px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.di.sel{background:var(--acl);border-color:var(--ac)}
+.db{min-width:40px;height:28px;border-radius:6px;background:var(--ac);
+  color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;padding:0 5px}
+.di.sel .db{background:var(--hi)}
+.dt{min-width:0;flex:1}
+.dp{font-size:14px;font-weight:500;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ds{font-size:11px;color:var(--mu);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.da{color:var(--mu);flex-shrink:0}
+.di.sel .da{color:var(--ac)}
+
+#stat{padding:14px;font-size:13px;color:var(--mu);text-align:center;display:none}
+#stat.v{display:block}
+
+#mw{flex:1;min-height:200px;overflow:hidden}
+#map{width:100%;height:100%}
+
+#info{background:var(--surf);border-top:1px solid var(--bdr);padding:8px 14px;
+  flex-shrink:0;min-height:34px;display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--mu)}
+.idot{width:8px;height:8px;border-radius:50%;background:var(--hi);flex-shrink:0;display:none}
+#info.hd .idot{display:block}
+.iname{font-weight:600;color:var(--tx)}
+
+#ov{position:fixed;inset:0;background:rgba(244,243,239,.94);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;z-index:9999;font-size:14px;color:var(--mu);text-align:center;padding:20px}
+#ov.hidden{display:none}
+.spin{width:30px;height:30px;border:3px solid var(--bdr);
+  border-top-color:var(--ac);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#ovmsg{max-width:280px;line-height:1.5}
+
+.leaflet-popup-content-wrapper{border-radius:10px!important;
+  box-shadow:0 4px 14px rgba(0,0,0,.12)!important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif!important}
+.leaflet-popup-content{margin:11px 13px!important;font-size:13px!important;line-height:1.5!important}
+.pu{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:#999;margin-bottom:2px}
+.pn{font-size:15px;font-weight:600;color:#111;margin-bottom:3px}
+.pt{font-size:12px;color:#555}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="ov">
+    <div class="spin" id="spinner"></div>
+    <span id="ovmsg">Locating Appogee on Quincy via OpenStreetMap…</span>
+  </div>
+
+  <div id="hdr">
+    <h1>Appogee on Quincy — Park Navigator</h1>
+    <p>34501 E Quincy Ave · Watkins, CO 80137</p>
+  </div>
+
+  <div id="tabs">
+    <div class="tab active" id="tu" onclick="setMode('unit')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>Building No.
+    </div>
+    <div class="tab" id="tn" onclick="setMode('name')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+      </svg>Business Name
+    </div>
+  </div>
+
+  <div id="sw">
+    <input id="srch" type="search" placeholder="Search building numbers…"
+           autocomplete="off" autocorrect="off" spellcheck="false" oninput="renderList()"/>
+  </div>
+
+  <div id="lw"><p id="stat"></p><ul id="lst"></ul></div>
+  <div id="mw"><div id="map"></div></div>
+
+  <div id="info">
+    <div class="idot"></div>
+    <span id="itxt">Select a destination above to navigate</span>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Route map for Appogee on Quincy industrial park.
+
+   Flow:
+   1. Nominatim geocodes the park address to seed the bbox.
+   2. Overpass fetches (live, on every load):
+        - highway ways → road network drawn on map
+        - landuse/boundary ways/relations → park boundary
+        - entrance nodes, addr:unit nodes/ways, named features
+   3. Map default zoom is fitted to the park boundary polygon.
+      Falls back to road/feature scatter if no boundary found.
+   4. Route origin = OSM node tagged entrance=primary or
+      name="Gate #1". Falls back to addr:unit=0 then geocode.
+   5. On destination selection, OSRM calculates a road-
+      following route from Gate #1. BFS fallback on failure.
+   ========================================================= */
+
+const ADDRESS   = "34501 E Quincy Ave, Watkins, CO 80137";
+const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const OVERPASS  = "https://overpass-api.de/api/interpreter";
+const OSRM      = "https://router.project-osrm.org/route/v1/driving";
+const BOX_DEG   = 0.009;   /* ~1 km half-width */
+
+let map, mode = "unit", selectedId = null;
+let allFeatures = [], routeLayer = null, markerLayer = null;
+let roadGraph   = null;
+let entryLL     = null;
+let b0Feature   = null;
+let allRawNodes = [];   /* all raw OSM node elements, for entrance detection */
+let parkBounds  = null; /* L.LatLngBounds of the park boundary polygon, if found */
+
+/* ── BOOT ── */
+async function init() {
+  setOv("Locating park entrance via OpenStreetMap…");
+
+  /* 1. Geocode the park address → entry point */
+  try {
+    const url = `${NOMINATIM}?q=${encodeURIComponent(ADDRESS)}&format=json&limit=1`;
+    const r = await fetch(url, { headers:{"Accept-Language":"en"} });
+    if (!r.ok) throw new Error("HTTP "+r.status);
+    const j = await r.json();
+    if (!j.length) throw new Error("not found");
+    entryLL = [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+  } catch(e) {
+    console.warn("Nominatim fallback:", e.message);
+    entryLL = [39.6981, -104.5748];
+  }
+
+  initMap(entryLL, 16);
+
+  /* 2. Fetch OSM data */
+  setOv("Fetching roads and buildings from OpenStreetMap…");
+  const S = entryLL[0]-BOX_DEG, N = entryLL[0]+BOX_DEG;
+  const W = entryLL[1]-BOX_DEG, E = entryLL[1]+BOX_DEG;
+  const bbox = `${S},${W},${N},${E}`;
+
+  try {
+    await loadOSM(bbox);
+  } catch(e) {
+    setOv("Could not load OSM data. Check your connection and reload. ("+e.message+")", true);
+    return;
+  }
+
+  /* 3. Find primary entrance: prefer entrance=primary or name="Gate #1",
+        then fall back to addr:unit=0, then geocoded point */
+  const gateFeature =
+    allRawNodes.find(n =>
+      n.tags && (
+        n.tags["entrance"] === "primary" ||
+        n.tags["entrance:primary"] !== undefined ||
+        n.tags["name"] === "Gate #1"
+      )
+    ) || null;
+
+  if (gateFeature) {
+    entryLL = [gateFeature.lat, gateFeature.lon];
+  } else {
+    b0Feature = allFeatures.find(f => f.unit === "0") || null;
+    if (b0Feature) entryLL = b0Feature.ll;
+  }
+
+  /* Draw Building 0 / entrance marker */
+  addEntryMarker(entryLL);
+
+  hideOv();
+  renderList();
+}
+
+/* ── MAP ── */
+function initMap(center, zoom) {
+  map = L.map("map", { center, zoom, zoomControl:true });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom:20
+  }).addTo(map);
+}
+
+function addEntryMarker(ll) {
+  const icon = L.divIcon({
+    className:"",
+    html:`<div style="background:#124f96;color:#fff;font-size:9px;font-weight:700;
+      border-radius:50%;width:36px;height:36px;display:flex;align-items:center;
+      justify-content:center;text-align:center;line-height:1.2;
+      border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35)">Gate<br>#1</div>`,
+    iconSize:[36,36], iconAnchor:[18,18]
+  });
+  L.marker(ll, {icon, zIndexOffset:1000}).addTo(map)
+    .bindPopup("<div class='pu'>PRIMARY ENTRANCE</div><div class='pn'>Gate #1</div><div class='pt'>Route origin · 34501 E Quincy Ave</div>");
+}
+
+/* ── OVERPASS ── */
+async function loadOSM(bbox) {
+  const q = `
+[out:json][timeout:30];
+(
+  way["highway"](${bbox});
+  node["entrance"](${bbox});
+  node["entrance:primary"](${bbox});
+  node["name"="Gate #1"](${bbox});
+  way["addr:unit"](${bbox});
+  node["addr:unit"](${bbox});
+  way["building"]["name"](${bbox});
+  node["building"]["name"](${bbox});
+  way["name"]["building"](${bbox});
+  node["name"]["building"](${bbox});
+  way["name"]["industrial"](${bbox});
+  node["name"]["industrial"](${bbox});
+  way["name"]["office"](${bbox});
+  node["name"]["office"](${bbox});
+  way["name"]["shop"](${bbox});
+  node["name"]["shop"](${bbox});
+  way["name"]["amenity"](${bbox});
+  node["name"]["amenity"](${bbox});
+  relation["name"="Appogee on Quincy"](${bbox});
+  relation["landuse"="industrial"](${bbox});
+  way["landuse"="industrial"](${bbox});
+  way["name"="Appogee on Quincy"](${bbox});
+);
+out body;>;out skel qt;`.trim();
+
+  const res = await fetch(OVERPASS, {
+    method:"POST",
+    body:"data="+encodeURIComponent(q),
+    headers:{"Content-Type":"application/x-www-form-urlencoded"}
+  });
+  if (!res.ok) throw new Error("Overpass HTTP "+res.status);
+  const data = await res.json();
+  processOSM(data);
+}
+
+/* ── PROCESS OSM ── */
+function processOSM(data) {
+  const nodeMap = {};
+  allRawNodes = [];
+  data.elements.forEach(el => {
+    if (el.type === "node") {
+      nodeMap[el.id] = [el.lat, el.lon];
+      allRawNodes.push(el);
+    }
+  });
+
+  const roads=[], features=[], graphNodes={}, graphEdges=[];
+  const boundaryCoords = [];   /* collected ring coords for the park boundary */
+
+  data.elements.forEach(el => {
+    const tags = el.tags||{};
+
+    /* Road ways → draw + store for fallback graph */
+    if (tags.highway && el.type==="way" && el.nodes) {
+      const coords = el.nodes.map(n=>nodeMap[n]).filter(Boolean);
+      if (coords.length>1) {
+        roads.push({coords, hw:tags.highway});
+        /* Build simple adjacency for fallback routing */
+        el.nodes.forEach(nid => {
+          if (nodeMap[nid]) graphNodes[nid] = nodeMap[nid];
+        });
+        for (let i=0;i<el.nodes.length-1;i++) {
+          const a=el.nodes[i], b=el.nodes[i+1];
+          if (nodeMap[a]&&nodeMap[b]) {
+            graphEdges.push([a,b]);
+            graphEdges.push([b,a]);
+          }
+        }
+      }
+      return;
+    }
+
+    /* Park boundary: landuse=industrial way or relation member ways
+       or any way/relation named "Appogee on Quincy" */
+    const isBoundary =
+      (el.type==="way" && el.nodes && (
+        tags.landuse==="industrial" ||
+        tags.leisure==="nature_reserve" ||
+        tags.name==="Appogee on Quincy" ||
+        tags.boundary==="industrial"
+      )) ||
+      (el.type==="relation" && (
+        tags.landuse==="industrial" ||
+        tags.name==="Appogee on Quincy"
+      ));
+
+    if (isBoundary && el.type==="way" && el.nodes) {
+      const pts = el.nodes.map(n=>nodeMap[n]).filter(Boolean);
+      if (pts.length>2) pts.forEach(p=>boundaryCoords.push(p));
+      return;
+    }
+
+    /* For relations, member ways are already expanded by >;out skel qt
+       and will appear as separate way elements handled above */
+
+    /* Named/addressed features */
+    const hasUnit = tags["addr:unit"];
+    const hasName = tags.name;
+    if (!hasUnit&&!hasName) return;
+    if (tags.highway) return;
+    if (tags.landuse) return;   /* don't add landuse areas to feature list */
+
+    let ll=null;
+    if (el.type==="node"&&el.lat!==undefined) {
+      ll=[el.lat,el.lon];
+    } else if (el.type==="way"&&el.nodes) {
+      const pts=el.nodes.map(n=>nodeMap[n]).filter(Boolean);
+      if (!pts.length) return;
+      ll=[pts.reduce((s,p)=>s+p[0],0)/pts.length, pts.reduce((s,p)=>s+p[1],0)/pts.length];
+    }
+    if (!ll) return;
+    features.push({id:el.id, unit:hasUnit||"", name:hasName||"", tags, ll});
+  });
+
+  /* Draw roads */
+  roads.forEach(r=>{
+    const w=(r.hw==="service"||r.hw==="track")?2.5:3.5;
+    const c=(r.hw==="service"||r.hw==="track")?"#b0aea6":"#787670";
+    L.polyline(r.coords,{color:c,weight:w,opacity:.8}).addTo(map);
+  });
+
+  /* Draw park boundary if found, and compute parkBounds */
+  if (boundaryCoords.length > 2) {
+    parkBounds = L.latLngBounds(boundaryCoords);
+    /* Draw the boundary as a subtle dashed outline */
+    L.polygon(boundaryCoords, {
+      color:"#124f96", weight:2, opacity:.5,
+      fillColor:"#124f96", fillOpacity:.04,
+      dashArray:"6 4"
+    }).addTo(map);
+  }
+
+  allFeatures = features;
+  roadGraph   = {nodes:graphNodes, edges:graphEdges};
+  drawMarkers(null);
+
+  /* Fit to park boundary if available, else fall back to road/feature scatter */
+  if (parkBounds && parkBounds.isValid()) {
+    map.fitBounds(parkBounds, {padding:[16,16]});
+  } else {
+    const pts=[...roads.flatMap(r=>r.coords),...features.map(f=>f.ll)];
+    if (pts.length>1) {
+      try{map.fitBounds(L.latLngBounds(pts),{padding:[14,14]});}catch(e){}
+    }
+  }
+}
+
+/* ── ROUTING ── */
+async function getRoute(fromLL, toLL) {
+  /* Try OSRM public API first */
+  try {
+    const url = `${OSRM}/${fromLL[1]},${fromLL[0]};${toLL[1]},${toLL[0]}?overview=full&geometries=geojson`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("OSRM HTTP "+r.status);
+    const j = await r.json();
+    if (j.code==="Ok" && j.routes && j.routes.length) {
+      /* GeoJSON coords are [lng,lat] */
+      return j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);
+    }
+    throw new Error("No OSRM route");
+  } catch(e) {
+    console.warn("OSRM failed, using road-graph fallback:", e.message);
+    return roadGraphRoute(fromLL, toLL);
+  }
+}
+
+/* Simple greedy nearest-node path along the road graph as fallback */
+function roadGraphRoute(fromLL, toLL) {
+  const nodes = roadGraph.nodes;
+  const ids   = Object.keys(nodes);
+  if (!ids.length) return [fromLL, toLL];
+
+  /* Build adjacency map */
+  const adj = {};
+  roadGraph.edges.forEach(([a,b])=>{
+    if (!adj[a]) adj[a]=[];
+    adj[a].push(b);
+  });
+
+  /* Find nearest node to from and to */
+  const nearestId = (ll) => ids.reduce((best,id)=>{
+    const d=dist(nodes[id],ll);
+    return d<best.d?{id,d}:best;
+  },{id:ids[0],d:Infinity}).id;
+
+  const startId = nearestId(fromLL);
+  const endId   = nearestId(toLL);
+
+  /* BFS */
+  const visited={}, prev={}, queue=[startId];
+  visited[startId]=true;
+  let found=false;
+  outer: while(queue.length) {
+    const cur=queue.shift();
+    if (cur==endId){found=true;break;}
+    for(const nb of (adj[cur]||[])){
+      if(!visited[nb]){visited[nb]=true;prev[nb]=cur;queue.push(nb);}
+    }
+  }
+
+  if (!found) return [fromLL, toLL];
+
+  /* Reconstruct path */
+  const path=[];
+  let cur=endId;
+  while(cur!==undefined){path.unshift(nodes[cur]);cur=prev[cur];}
+  return [fromLL,...path,toLL];
+}
+
+function dist(a,b){
+  const dlat=a[0]-b[0], dlng=a[1]-b[1];
+  return dlat*dlat+dlng*dlng;
+}
+
+/* ── MARKERS ── */
+function drawMarkers(selId) {
+  if (markerLayer){map.removeLayer(markerLayer);markerLayer=null;}
+  markerLayer=L.layerGroup().addTo(map);
+
+  allFeatures.forEach(f=>{
+    /* Skip the primary entrance — it has its own permanent Gate #1 marker */
+    if (
+      f.unit === "0" ||
+      f.tags["entrance"] === "primary" ||
+      f.tags["entrance:primary"] !== undefined ||
+      f.tags["name"] === "Gate #1"
+    ) return;
+
+    const isSel=f.id===selId;
+    const lbl=f.unit||(f.name.length>6?f.name.slice(0,5)+"…":f.name);
+    const bg=isSel?"#bf3f00":"#124f96";
+    const sz=isSel?34:28;
+    const fs=isSel?11:10;
+
+    const icon=L.divIcon({
+      className:"",
+      html:`<div style="background:${bg};color:#fff;font-size:${fs}px;font-weight:700;
+        border-radius:${isSel?6:4}px;padding:0 5px;height:${sz}px;min-width:${sz}px;
+        display:flex;align-items:center;justify-content:center;
+        border:2px solid #fff;box-shadow:0 2px ${isSel?8:4}px rgba(0,0,0,${isSel?.3:.2});
+        white-space:nowrap">${esc(lbl)}</div>`,
+      iconAnchor:[sz/2,sz/2]
+    });
+
+    const m=L.marker(f.ll,{icon}).addTo(markerLayer);
+    m.bindPopup(buildPopup(f));
+    m._fid=f.id;
+    if(isSel) setTimeout(()=>m.openPopup(),900);
+  });
+}
+
+function buildPopup(f){
+  const skip=new Set(["name","addr:unit","building","highway","landuse","source","created_by"]);
+  const labels={"addr:street":"Street","addr:housenumber":"No.","addr:city":"City",
+    "addr:postcode":"ZIP","phone":"Phone","website":"Website",
+    "opening_hours":"Hours","operator":"Operator","brand":"Brand"};
+  const rows=Object.entries(f.tags)
+    .filter(([k])=>!skip.has(k))
+    .map(([k,v])=>`<tr><td style="color:#999;padding-right:8px;font-size:11px;white-space:nowrap">${esc(labels[k]||k)}</td>
+      <td style="font-size:12px">${esc(v)}</td></tr>`).join("");
+  return `<div class="pu">${f.unit?"Building "+esc(f.unit):""}</div>
+    <div class="pn">${esc(f.name||"Building "+f.unit)}</div>
+    ${rows?`<table style="margin-top:5px;border-collapse:collapse">${rows}</table>`:""}`;
+}
+
+/* ── LIST ── */
+function renderList(){
+  const q=document.getElementById("srch").value.trim().toLowerCase();
+  const ul=document.getElementById("lst");
+  const st=document.getElementById("stat");
+  ul.innerHTML="";
+
+  let items=allFeatures.filter(f=>mode==="unit"?f.unit!=="":f.name!=="");
+  if(q) items=items.filter(f=>f.unit.toLowerCase().includes(q)||f.name.toLowerCase().includes(q));
+  items.sort((a,b)=>mode==="unit"
+    ?a.unit.localeCompare(b.unit,undefined,{numeric:true})
+    :a.name.localeCompare(b.name));
+
+  if(!items.length){
+    st.textContent=allFeatures.length===0
+      ?"No addr:unit or name tags found in OSM for this area yet."
+      :"No results match your search.";
+    st.className="v"; return;
+  }
+  st.className="";
+
+  items.forEach(f=>{
+    const li=document.createElement("li");
+    li.className="di"+(f.id===selectedId?" sel":"");
+    li.dataset.id=f.id;
+    const pri=mode==="unit"?"Building "+f.unit:f.name;
+    const sec=mode==="unit"?f.name:(f.unit?"Building "+f.unit:"");
+    li.innerHTML=`
+      <div class="db">${esc(f.unit||"●")}</div>
+      <div class="dt">
+        <div class="dp">${esc(pri)}</div>
+        ${sec?`<div class="ds">${esc(sec)}</div>`:""}
+      </div>
+      <svg class="da" width="13" height="13" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>`;
+    li.addEventListener("click",()=>selectDest(f.id));
+    ul.appendChild(li);
+  });
+}
+
+/* ── SELECT DESTINATION ── */
+async function selectDest(id){
+  selectedId=id;
+  const f=allFeatures.find(x=>x.id===id);
+  if(!f) return;
+
+  drawMarkers(id);
+
+  /* Clear previous route */
+  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+
+  /* Show "routing…" in info bar while we fetch */
+  const infoEl=document.getElementById("info");
+  infoEl.classList.add("hd");
+  document.getElementById("itxt").innerHTML=
+    `<span class="iname">Calculating route to ${esc(f.name||"Building "+f.unit)}…</span>`;
+
+  /* Get road-following route from Gate #1 (primary entrance) */
+  const routeCoords=await getRoute(entryLL, f.ll);
+
+  /* Draw route */
+  routeLayer=L.layerGroup().addTo(map);
+
+  /* White halo behind the route line for contrast */
+  L.polyline(routeCoords,{color:"#fff",weight:8,opacity:.6}).addTo(routeLayer);
+  /* Main blue route */
+  L.polyline(routeCoords,{color:"#124f96",weight:4,opacity:.95}).addTo(routeLayer);
+
+  /* Destination dot */
+  L.circleMarker(f.ll,{
+    radius:8,color:"#fff",fillColor:"#bf3f00",fillOpacity:1,weight:2.5
+  }).addTo(routeLayer);
+
+  /* Fit map to show full route, bounded by park extent */
+  try {
+    const routeBounds = L.latLngBounds(routeCoords);
+    /* If we have a park boundary, extend to include it so the
+       user always sees the full park for context */
+    const fitTarget = parkBounds && parkBounds.isValid()
+      ? parkBounds
+      : routeBounds;
+    map.fitBounds(fitTarget, {padding:[30,30], maxZoom:18});
+  } catch(e){}
+
+  /* Update info bar */
+  const parts=[f.unit?"Bldg "+f.unit:"",f.name].filter(Boolean);
+  document.getElementById("itxt").innerHTML=
+    `<span class="iname">${esc(parts.join(" · "))}</span>`;
+
+  /* Highlight list row */
+  document.querySelectorAll(".di").forEach(el=>
+    el.classList.toggle("sel",el.dataset.id==id));
+}
+
+/* ── MODE ── */
+function setMode(m){
+  mode=m;
+  document.getElementById("tu").classList.toggle("active",m==="unit");
+  document.getElementById("tn").classList.toggle("active",m==="name");
+  document.getElementById("srch").placeholder=
+    m==="unit"?"Search building numbers…":"Search business names…";
+  document.getElementById("srch").value="";
+  renderList();
+}
+
+/* ── OVERLAY ── */
+function setOv(msg,err=false){
+  document.getElementById("ovmsg").textContent=msg;
+  document.getElementById("ov").classList.remove("hidden");
+  if(err) document.getElementById("spinner").style.display="none";
+}
+function hideOv(){document.getElementById("ov").classList.add("hidden");}
+
+/* ── UTIL ── */
+function esc(s){
+  return String(s||"")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+init();
+</script>
+</body>
+</html>
